@@ -80,7 +80,7 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
     /// corresponding key passed to [`TriHashMap::entry`].
     pub fn insert(self, value: T) -> RefMut<'a, T, S> {
         // SAFETY: The safety assumption behind `Self::new` guarantees that the
-        // original reference to the map is not used at this point.
+        // original reference to the map is no longer used at this point.
         let map = unsafe { self.map.awaken() };
         validate_hashes(map, self.hashes, &value);
         let Ok(index) = map.insert_unique_impl(value) else {
@@ -93,8 +93,9 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
     #[inline]
     pub fn insert_entry(mut self, value: T) -> OccupiedEntry<'a, T, S, A> {
         let index = {
-            // SAFETY: The safety assumption behind `Self::new` guarantees that the
-            // original reference to the map is not used at this point.
+            // SAFETY: The safety assumption behind `Self::new` guarantees that
+            // the original reference to the map is no longer used at this
+            // point.
             let map = unsafe { self.map.reborrow() };
             validate_hashes(map, self.hashes, &value);
             let Ok(index) = map.insert_unique_impl(value) else {
@@ -103,7 +104,8 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
             index
         };
 
-        // SAFETY: map, as well as anything borrowed from it, is dropped above.
+        // SAFETY: `map`, as well as anything borrowed from it, is dropped
+        // above, so the temporary reborrow has ended before awakening again.
         unsafe { OccupiedEntry::new(self.map, EntryIndexes::Unique(index)) }
     }
 }
@@ -175,7 +177,8 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
     /// Returns shared references to values that match the provided keys.
     pub fn get(&self) -> OccupiedEntryRef<'_, T> {
         // SAFETY: The safety assumption behind `Self::new` guarantees that the
-        // original reference to the map is not used at this point.
+        // original reference to the map is no longer used at this point, and
+        // there is no active temporary reborrow.
         let map = unsafe { self.map.reborrow_shared() };
         map.get_by_entry_index(self.indexes)
     }
@@ -183,7 +186,8 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
     /// Converts self into shared references to items that match the provided keys.
     pub fn into_ref(self) -> OccupiedEntryRef<'a, T> {
         // SAFETY: The safety assumption behind `Self::new` guarantees that the
-        // original reference to the map is not used at this point.
+        // original reference to the map is no longer used at this point, and
+        // there is no active temporary reborrow.
         let map = unsafe { self.map.awaken() };
         map.get_by_entry_index(self.indexes)
     }
@@ -265,6 +269,24 @@ impl<'a, T: TriHashItem> NonUniqueEntryRef<'a, T> {
         key_to_slot: [Option<usize>; 3],
     ) -> Self {
         Self { values, len, key_to_slot }
+    }
+
+    /// Returns a reference to the value fetched by the first key.
+    #[inline]
+    pub fn by_key1(&self) -> Option<&'a T> {
+        self.by_key(0)
+    }
+
+    /// Returns a reference to the value fetched by the second key.
+    #[inline]
+    pub fn by_key2(&self) -> Option<&'a T> {
+        self.by_key(1)
+    }
+
+    /// Returns a reference to the value fetched by the third key.
+    #[inline]
+    pub fn by_key3(&self) -> Option<&'a T> {
+        self.by_key(2)
     }
 
     #[inline]

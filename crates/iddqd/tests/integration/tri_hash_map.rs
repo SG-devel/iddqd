@@ -1409,8 +1409,16 @@ fn entry_shared_access_preserves_mapping_and_distinct_order() {
             assert_eq!(entry_ref.by_key1().unwrap().key1, 1);
             assert_eq!(entry_ref.by_key2().unwrap().key1, 1);
             assert_eq!(entry_ref.by_key3().unwrap().key1, 2);
+            let tri_hash_map::OccupiedEntryRef::NonUnique(non_unique) =
+                entry_ref
+            else {
+                panic!("expected non-unique entry ref");
+            };
+            assert_eq!(non_unique.by_key1().unwrap().key1, 1);
+            assert_eq!(non_unique.by_key2().unwrap().key1, 1);
+            assert_eq!(non_unique.by_key3().unwrap().key1, 2);
             let mut seen = Vec::new();
-            entry_ref.for_each(|item| seen.push(item.key1));
+            non_unique.for_each(|item| seen.push(item.key1));
             assert_eq!(seen, vec![1, 2]);
         }
         tri_hash_map::Entry::Vacant(_) => panic!("expected occupied"),
@@ -1422,8 +1430,16 @@ fn entry_shared_access_preserves_mapping_and_distinct_order() {
             assert_eq!(entry_ref.by_key1().unwrap().key1, 1);
             assert!(entry_ref.by_key2().is_none());
             assert_eq!(entry_ref.by_key3().unwrap().key1, 1);
+            let tri_hash_map::OccupiedEntryRef::NonUnique(non_unique) =
+                entry_ref
+            else {
+                panic!("expected non-unique entry ref");
+            };
+            assert_eq!(non_unique.by_key1().unwrap().key1, 1);
+            assert!(non_unique.by_key2().is_none());
+            assert_eq!(non_unique.by_key3().unwrap().key1, 1);
             let mut seen = Vec::new();
-            entry_ref.for_each(|item| seen.push(item.key1));
+            non_unique.for_each(|item| seen.push(item.key1));
             assert_eq!(seen, vec![1]);
         }
         tri_hash_map::Entry::Vacant(_) => panic!("expected occupied"),

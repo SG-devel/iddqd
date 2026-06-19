@@ -49,7 +49,7 @@ impl<const N: usize> EntryIndexes<N> {
     #[inline]
     #[expect(
         dead_code,
-        reason = "reserved for upcoming TriHashMap entry wiring"
+        reason = "reserved for upcoming TriHashMap occupied entry replacement validation"
     )]
     pub(crate) const fn indexes(&self) -> &[Option<ItemIndex>; N] {
         &self.indexes
