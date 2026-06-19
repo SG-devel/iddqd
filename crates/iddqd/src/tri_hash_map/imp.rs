@@ -1515,7 +1515,7 @@ impl<T: TriHashItem, S: Clone + BuildHasher, A: Allocator> TriHashMap<T, S, A> {
         self.try_reserve_insert_overwrite_commit(
             prepared.needs_new_item_slot(),
         )
-        .expect("reserved space successfully");
+        .expect("reserved capacity for entry replacement commit");
 
         self.commit_insert_overwrite(value, prepared, &mut duplicates);
 
@@ -3015,7 +3015,7 @@ impl<T: TriHashItem, S: Clone + BuildHasher, A: Allocator> TriHashMap<T, S, A> {
         for duplicate in prepared.duplicates {
             duplicates.push(
                 self.remove_duplicate(duplicate)
-                    .expect("duplicate index was prepared"),
+                    .expect("prepared duplicate index was present"),
             );
         }
 
@@ -3120,7 +3120,7 @@ impl<T: TriHashItem, S: Clone + BuildHasher, A: Allocator> TriHashMap<T, S, A> {
         for duplicate in duplicates {
             removed.push(
                 self.remove_duplicate(duplicate)
-                    .expect("duplicate index was prepared"),
+                    .expect("prepared duplicate index was present"),
             );
         }
     }

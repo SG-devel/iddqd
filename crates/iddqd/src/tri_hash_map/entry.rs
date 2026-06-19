@@ -202,7 +202,6 @@ impl<'a, T: TriHashItem, S, A: Allocator> fmt::Debug
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OccupiedEntry")
             .field("indexes", &self.indexes)
-            .field("hashes", &self.hashes)
             .finish_non_exhaustive()
     }
 }
@@ -298,7 +297,7 @@ impl<'a, T: TriHashItem, S: Clone + BuildHasher, A: Allocator>
 
         let mut removed = Vec::with_capacity(prepared.duplicate_count());
         map.try_reserve_insert_overwrite_commit(prepared.needs_new_item_slot())
-            .expect("reserved space successfully");
+            .expect("reserved capacity for entry replacement commit");
         let next_index =
             map.commit_insert_overwrite(value, prepared, &mut removed);
         self.indexes = EntryIndexes::Unique(next_index);
