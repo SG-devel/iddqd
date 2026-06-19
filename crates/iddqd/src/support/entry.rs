@@ -1,4 +1,7 @@
-#![allow(dead_code)]
+#![expect(
+    dead_code,
+    reason = "temporary until the next PR wires the support primitive into BiHashMap"
+)]
 
 //! Crate-internal support for classifying multi-key entry lookups.
 //!
@@ -6,21 +9,23 @@
 //! understands fixed arrays of optional item indexes, preserving enough state for
 //! entry APIs to reason about vacant, unique, and non-unique lookup results.
 
+use crate::support::ItemIndex;
+
 /// Classification of a multi-key entry lookup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum EntryLookup<I, const N: usize> {
+pub(crate) enum EntryLookup<const N: usize> {
     /// No key matched an existing item.
     Vacant,
     /// Every key matched the same existing item.
-    Unique(I),
+    Unique(ItemIndex),
     /// At least one key matched, but the lookup was not unique.
-    NonUnique(NonUniqueIndexes<I, N>),
+    NonUnique(NonUniqueIndexes<N>),
 }
 
 /// Per-key lookup indexes for an entry operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct EntryIndexes<I, const N: usize> {
-    indexes: [Option<I>; N],
+pub(crate) struct EntryIndexes<const N: usize> {
+    indexes: [Option<ItemIndex>; N],
 }
 
 /// Non-unique per-key lookup indexes.
@@ -28,31 +33,31 @@ pub(crate) struct EntryIndexes<I, const N: usize> {
 /// Invariant: at least one index is `Some`, and the indexes are not all the
 /// same `Some` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct NonUniqueIndexes<I, const N: usize> {
-    indexes: [Option<I>; N],
+pub(crate) struct NonUniqueIndexes<const N: usize> {
+    indexes: [Option<ItemIndex>; N],
 }
 
 /// Distinct indexes referenced by a non-vacant lookup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct DistinctIndexes<I, const N: usize> {
-    indexes: [Option<I>; N],
+pub(crate) struct DistinctIndexes<const N: usize> {
+    indexes: [Option<ItemIndex>; N],
     len: usize,
     key_to_slot: [Option<usize>; N],
 }
 
-impl<I: Copy + Eq, const N: usize> EntryIndexes<I, N> {
+impl<const N: usize> EntryIndexes<N> {
     #[inline]
-    pub(crate) const fn new(indexes: [Option<I>; N]) -> Self {
+    pub(crate) const fn new(indexes: [Option<ItemIndex>; N]) -> Self {
         Self { indexes }
     }
 
     #[inline]
-    pub(crate) const fn indexes(&self) -> &[Option<I>; N] {
+    pub(crate) const fn indexes(&self) -> &[Option<ItemIndex>; N] {
         &self.indexes
     }
 
     #[inline]
-    pub(crate) fn classify(self) -> EntryLookup<I, N> {
+    pub(crate) fn classify(self) -> EntryLookup<N> {
         let mut first = None;
         let mut saw_none = false;
         let mut all_some_same = true;
@@ -78,20 +83,20 @@ impl<I: Copy + Eq, const N: usize> EntryIndexes<I, N> {
     }
 }
 
-impl<I: Copy + Eq, const N: usize> NonUniqueIndexes<I, N> {
+impl<const N: usize> NonUniqueIndexes<N> {
     #[inline]
-    pub(crate) const fn indexes(&self) -> &[Option<I>; N] {
+    pub(crate) const fn indexes(&self) -> &[Option<ItemIndex>; N] {
         &self.indexes
     }
 
     #[inline]
-    pub(crate) fn distinct(self) -> DistinctIndexes<I, N> {
+    pub(crate) fn distinct(self) -> DistinctIndexes<N> {
         DistinctIndexes::from_indexes(self.indexes)
     }
 }
 
-impl<I: Copy + Eq, const N: usize> DistinctIndexes<I, N> {
-    fn from_indexes(source: [Option<I>; N]) -> Self {
+impl<const N: usize> DistinctIndexes<N> {
+    fn from_indexes(source: [Option<ItemIndex>; N]) -> Self {
         let mut indexes = [None; N];
         let mut key_to_slot = [None; N];
         let mut len = 0;
@@ -128,7 +133,7 @@ impl<I: Copy + Eq, const N: usize> DistinctIndexes<I, N> {
     }
 
     #[inline]
-    pub(crate) const fn indexes(&self) -> &[Option<I>; N] {
+    pub(crate) const fn indexes(&self) -> &[Option<ItemIndex>; N] {
         &self.indexes
     }
 
@@ -146,16 +151,21 @@ impl<I: Copy + Eq, const N: usize> DistinctIndexes<I, N> {
 #[cfg(test)]
 mod tests {
     use super::{EntryIndexes, EntryLookup};
+    use crate::support::ItemIndex;
+
+    fn ix(value: u32) -> ItemIndex {
+        ItemIndex::new(value)
+    }
 
     fn classify<const N: usize>(
-        indexes: [Option<u8>; N],
-    ) -> EntryLookup<u8, N> {
+        indexes: [Option<ItemIndex>; N],
+    ) -> EntryLookup<N> {
         EntryIndexes::new(indexes).classify()
     }
 
     fn non_unique_distinct<const N: usize>(
-        indexes: [Option<u8>; N],
-    ) -> (usize, [Option<u8>; N], [Option<usize>; N]) {
+        indexes: [Option<ItemIndex>; N],
+    ) -> (usize, [Option<ItemIndex>; N], [Option<usize>; N]) {
         let EntryLookup::NonUnique(indexes) = classify(indexes) else {
             panic!("expected non-unique indexes")
         };
@@ -170,19 +180,28 @@ mod tests {
 
     #[test]
     fn arity_2_unique_classification() {
-        assert_eq!(classify([Some(1), Some(1)]), EntryLookup::Unique(1));
+        assert_eq!(
+            classify([Some(ix(1)), Some(ix(1))]),
+            EntryLookup::Unique(ix(1))
+        );
     }
 
     #[test]
     fn arity_2_partial_classification() {
-        assert!(matches!(classify([Some(1), None]), EntryLookup::NonUnique(_)));
-        assert!(matches!(classify([None, Some(1)]), EntryLookup::NonUnique(_)));
+        assert!(matches!(
+            classify([Some(ix(1)), None]),
+            EntryLookup::NonUnique(_)
+        ));
+        assert!(matches!(
+            classify([None, Some(ix(1))]),
+            EntryLookup::NonUnique(_)
+        ));
     }
 
     #[test]
     fn arity_2_mixed_classification() {
         assert!(matches!(
-            classify([Some(1), Some(2)]),
+            classify([Some(ix(1)), Some(ix(2))]),
             EntryLookup::NonUnique(_)
         ));
     }
@@ -195,19 +214,19 @@ mod tests {
     #[test]
     fn arity_3_unique_classification() {
         assert_eq!(
-            classify([Some(1), Some(1), Some(1)]),
-            EntryLookup::Unique(1)
+            classify([Some(ix(1)), Some(ix(1)), Some(ix(1))]),
+            EntryLookup::Unique(ix(1))
         );
     }
 
     #[test]
     fn arity_3_partial_duplicate_classification() {
         assert!(matches!(
-            classify([Some(1), Some(1), None]),
+            classify([Some(ix(1)), Some(ix(1)), None]),
             EntryLookup::NonUnique(_)
         ));
         assert!(matches!(
-            classify([None, Some(1), Some(1)]),
+            classify([None, Some(ix(1)), Some(ix(1))]),
             EntryLookup::NonUnique(_)
         ));
     }
@@ -215,7 +234,7 @@ mod tests {
     #[test]
     fn arity_3_separated_duplicate_classification() {
         assert!(matches!(
-            classify([Some(1), None, Some(1)]),
+            classify([Some(ix(1)), None, Some(ix(1))]),
             EntryLookup::NonUnique(_)
         ));
     }
@@ -223,11 +242,11 @@ mod tests {
     #[test]
     fn arity_3_mixed_duplicate_classification() {
         assert!(matches!(
-            classify([Some(1), Some(1), Some(2)]),
+            classify([Some(ix(1)), Some(ix(1)), Some(ix(2))]),
             EntryLookup::NonUnique(_)
         ));
         assert!(matches!(
-            classify([Some(1), Some(2), Some(1)]),
+            classify([Some(ix(1)), Some(ix(2)), Some(ix(1))]),
             EntryLookup::NonUnique(_)
         ));
     }
@@ -235,7 +254,7 @@ mod tests {
     #[test]
     fn arity_3_all_distinct_classification() {
         assert!(matches!(
-            classify([Some(1), Some(2), Some(3)]),
+            classify([Some(ix(1)), Some(ix(2)), Some(ix(3))]),
             EntryLookup::NonUnique(_)
         ));
     }
@@ -243,32 +262,36 @@ mod tests {
     #[test]
     fn deterministic_first_key_hit_distinct_ordering() {
         assert_eq!(
-            non_unique_distinct([Some(1), Some(1), Some(2)]),
-            (2, [Some(1), Some(2), None], [Some(0), Some(0), Some(1)])
+            non_unique_distinct([Some(ix(1)), Some(ix(1)), Some(ix(2))]),
+            (2, [Some(ix(1)), Some(ix(2)), None], [Some(0), Some(0), Some(1)])
         );
         assert_eq!(
-            non_unique_distinct([Some(1), Some(2), Some(1)]),
-            (2, [Some(1), Some(2), None], [Some(0), Some(1), Some(0)])
+            non_unique_distinct([Some(ix(1)), Some(ix(2)), Some(ix(1))]),
+            (2, [Some(ix(1)), Some(ix(2)), None], [Some(0), Some(1), Some(0)])
         );
         assert_eq!(
-            non_unique_distinct([None, Some(2), Some(1)]),
-            (2, [Some(2), Some(1), None], [None, Some(0), Some(1)])
+            non_unique_distinct([None, Some(ix(2)), Some(ix(1))]),
+            (2, [Some(ix(2)), Some(ix(1)), None], [None, Some(0), Some(1)])
         );
     }
 
     #[test]
     fn key_to_slot_mapping_for_repeated_indexes() {
         assert_eq!(
-            non_unique_distinct([Some(1), None, Some(1)]),
-            (1, [Some(1), None, None], [Some(0), None, Some(0)])
+            non_unique_distinct([Some(ix(1)), None, Some(ix(1))]),
+            (1, [Some(ix(1)), None, None], [Some(0), None, Some(0)])
         );
     }
 
     #[test]
     fn no_duplicate_distinct_indexes() {
         assert_eq!(
-            non_unique_distinct([Some(1), Some(2), Some(3)]),
-            (3, [Some(1), Some(2), Some(3)], [Some(0), Some(1), Some(2)])
+            non_unique_distinct([Some(ix(1)), Some(ix(2)), Some(ix(3))]),
+            (
+                3,
+                [Some(ix(1)), Some(ix(2)), Some(ix(3))],
+                [Some(0), Some(1), Some(2)]
+            )
         );
     }
 }
